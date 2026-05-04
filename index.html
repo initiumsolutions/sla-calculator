@@ -1207,9 +1207,27 @@ function doLogin() {
   document.getElementById('login-overlay').style.display = 'none';
   document.getElementById('role-pill-label').textContent = matchedUser.name;
  
+  localStorage.setItem('slaActiveTab', 'dashboard');
   switchTab('dashboard');
   render();
   applyRole();
+}
+ function getSavedTab() {
+  var savedTab = localStorage.getItem('slaActiveTab') || 'dashboard';
+  var validTabs = ['dashboard', 'log', 'settings', 'security'];
+
+  if (validTabs.indexOf(savedTab) === -1) {
+    return 'dashboard';
+  }
+
+  // Safety: non-admin users should not be restored directly to Settings or Security
+  var meta = ROLE_META[currentRole];
+
+  if ((savedTab === 'settings' || savedTab === 'security') && (!meta || !meta.canSettings)) {
+    return 'dashboard';
+  }
+
+  return savedTab;
 }
 function restoreSession() {
   var raw = localStorage.getItem('slaSession');
@@ -1234,10 +1252,10 @@ function restoreSession() {
     document.getElementById('login-overlay').style.display = 'none';
     document.getElementById('role-pill-label').textContent = user.name;
 
-    switchTab('dashboard');
     render();
     applyRole();
-
+var savedTab = getSavedTab();
+switchTab(savedTab);
     return true;
   } catch (e) {
     localStorage.removeItem('slaSession');
@@ -1248,6 +1266,7 @@ function doLogout() {
   if (!confirm('Log out?')) return;
   if (currentUser) logSec('🚪', 'Logout: "'+currentUser.name+'"');
  localStorage.removeItem('slaSession');
+ localStorage.removeItem('slaActiveTab');
   currentRole = null; currentUser = null;
   document.getElementById('login-pass').value = '';
   document.getElementById('login-error').textContent = '';
@@ -1946,6 +1965,8 @@ function switchTab(name, btn) {
 
   var activeBtn = btn || document.querySelector('.tab-btn[data-tab="' + name + '"]');
   if (activeBtn) activeBtn.classList.add('active');
+
+  localStorage.setItem('slaActiveTab', name);
 
   if (name === 'security') {
     renderUserList(usersCache);
