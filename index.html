@@ -1189,7 +1189,6 @@ function doLogin() {
   currentRole = matchedUser.role;
   currentUser = matchedUser;
   logSec('🔐', 'Login: "'+matchedUser.name+'" ('+(ROLE_LABELS[matchedUser.role]||matchedUser.role)+')');
-  setActiveTab('dashboard'); 
   document.getElementById('login-overlay').style.display = 'none';
   document.getElementById('role-pill-label').textContent = matchedUser.name;
   applyRole();
@@ -2029,38 +2028,39 @@ function addUser() {
   var role = document.getElementById('nu-role') ? document.getElementById('nu-role').value : 'nonadmin';
   var pass = document.getElementById('nu-pass') ? document.getElementById('nu-pass').value.trim() : '';
   if (!name||!pass) { toast('Name and password are required.'); return; }
-  var db = dbGet();
-  var maxId = db.users.reduce(function(m,u){ return Math.max(m,u.id); }, 0);
-  db.users.push({ id:maxId+1, name:name, username:uname, role:role, password:pass, active:true });
+  // FIX: use usersCache directly — dbGet() returns users:[] (empty) which wiped all users
+  var maxId = usersCache.reduce(function(m,u){ return Math.max(m,u.id); }, 0);
+  usersCache.push({ id:maxId+1, name:name, username:uname, role:role, password:pass, active:true });
   logSec('➕', 'New user added: "'+name+'" ('+(ROLE_LABELS[role]||role)+')');
-  dbCommit(db); syncPasswords(db); renderUserList(db);
+  // FIX: save to Supabase — previously dbCommit() was a no-op so new users were never persisted
+  syncPasswordsFromUsers(usersCache); renderUserList(usersCache); dbSaveUsers(usersCache);
   ['nu-name','nu-username','nu-pass'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
   var str = document.getElementById('nu-strength'); if(str) str.className='pass-strength';
   toast('User "'+name+'" added successfully.');
 }
 
 function deleteUser(uid) {
-  var db   = dbGet();
-  var user = db.users.find(function(u){ return u.id===uid; });
+  // FIX: use usersCache directly — dbGet() returns users:[] so find() always returned undefined
+  var user = usersCache.find(function(u){ return u.id===uid; });
   if (!user) return;
-  if (db.users.filter(function(u){ return u.active!==false; }).length <= 1) { toast('Cannot delete the last active user.'); return; }
+  if (usersCache.filter(function(u){ return u.active!==false; }).length <= 1) { toast('Cannot delete the last active user.'); return; }
   showConfirm('🗑️','Delete User?','This will permanently remove "'+user.name+'" from the system.',function(){
-    db.users = db.users.filter(function(u){ return u.id!==uid; });
+    usersCache = usersCache.filter(function(u){ return u.id!==uid; });
     logSec('🗑️','User deleted: "'+user.name+'"');
-    dbCommit(db); syncPasswords(db); renderUserList(db); toast('User deleted.');
+    syncPasswordsFromUsers(usersCache); renderUserList(usersCache); dbSaveUsers(usersCache); toast('User deleted.');
   }, true);
 }
 
 function toggleUserActive(uid, active) {
-  var db   = dbGet();
-  var user = db.users.find(function(u){ return u.id===uid; });
+  // FIX: use usersCache directly — dbGet() returns users:[] so find() always returned undefined
+  var user = usersCache.find(function(u){ return u.id===uid; });
   if (!user) return;
-  if (!active && db.users.filter(function(u){ return u.active!==false && u.id!==uid; }).length < 1) {
+  if (!active && usersCache.filter(function(u){ return u.active!==false && u.id!==uid; }).length < 1) {
     toast('At least one user must remain active.'); return;
   }
   user.active = active;
   logSec(active?'✅':'🚫', 'User "'+user.name+'" '+(active?'activated':'deactivated'));
-  dbCommit(db); syncPasswords(db); renderUserList(db);
+  syncPasswordsFromUsers(usersCache); renderUserList(usersCache); dbSaveUsers(usersCache);
   toast('User '+(active?'activated.':'deactivated.'));
 }
 
