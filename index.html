@@ -1142,7 +1142,17 @@
 
 <div id="toast"></div>
 
+// Logging function (safe)
+function logSec(icon, message) {
+  console.log(icon, message);
+}
 
+// Role labels mapping (UI display names)
+const ROLE_LABELS = {
+  admin: "Admin",
+  nonadmin: "Staff",
+  customer: "Customer"
+};
 <script>
 // ── Auth ──────────────────────────────────────────────────────────────────
 // Roles: admin | nonadmin | customer
@@ -1189,7 +1199,7 @@ function doLogin() {
   currentRole = matchedUser.role;
   currentUser = matchedUser;
  
-  console.log('Login:', matchedUser.name, matchedUser.role);
+  logSec('🔐', 'Login: "'+matchedUser.name+'" ('+(ROLE_LABELS[matchedUser.role]||matchedUser.role)+')');
   document.getElementById('login-overlay').style.display = 'none';
   document.getElementById('role-pill-label').textContent = matchedUser.name;
   applyRole();
