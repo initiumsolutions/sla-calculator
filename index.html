@@ -805,10 +805,10 @@
         </div>
       </div>
     <div class="tabs">
-      <button class="tab-btn active" onclick="switchTab('dashboard')">Dashboard</button>
-      <button class="tab-btn" onclick="switchTab('log')">Entry Log</button>
-      <button class="tab-btn" onclick="switchTab('settings')">Contract Settings</button>
-      <button class="tab-btn" onclick="switchTab('security')">🔐 Security &amp; Users</button>
+      <button class="tab-btn active" data-tab="dashboard" onclick="switchTab('dashboard', this)">Dashboard</button>
+      <button class="tab-btn" data-tab="log" onclick="switchTab('log', this)">Entry Log</button>
+      <button class="tab-btn" data-tab="settings" onclick="switchTab('settings', this)">Contract Settings</button>
+      <button class="tab-btn" data-tab="security" onclick="switchTab('security', this)">🔐 Security &amp; Users</button>
     </div>
   </div>
 </div>
@@ -1191,6 +1191,9 @@ function doLogin() {
   logSec('🔐', 'Login: "'+matchedUser.name+'" ('+(ROLE_LABELS[matchedUser.role]||matchedUser.role)+')');
   document.getElementById('login-overlay').style.display = 'none';
   document.getElementById('role-pill-label').textContent = matchedUser.name;
+ 
+  switchTab('dashboard');
+  render();
   applyRole();
 }
 
@@ -1878,12 +1881,25 @@ function saveSettings() {
   render();
 }
 
-function switchTab(name) {
-  document.querySelectorAll('.tab-pane').forEach(function(p){ p.classList.remove('active'); });
-  document.querySelectorAll('.tab-btn').forEach(function(b){ b.classList.remove('active'); });
-  document.getElementById('tab-' + name).classList.add('active');
-  event.target.classList.add('active');
-  if (name === 'security') { renderUserList(usersCache); renderSecLog(); }
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-pane').forEach(function(p) {
+    p.classList.remove('active');
+  });
+
+  document.querySelectorAll('.tab-btn').forEach(function(b) {
+    b.classList.remove('active');
+  });
+
+  var pane = document.getElementById('tab-' + name);
+  if (pane) pane.classList.add('active');
+
+  var activeBtn = btn || document.querySelector('.tab-btn[data-tab="' + name + '"]');
+  if (activeBtn) activeBtn.classList.add('active');
+
+  if (name === 'security') {
+    renderUserList(usersCache);
+    renderSecLog();
+  }
 }
 
 function toast(msg) {
