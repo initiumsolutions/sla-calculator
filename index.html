@@ -1188,7 +1188,7 @@ function doLogin() {
   }
   currentRole = matchedUser.role;
   currentUser = matchedUser;
- setActiveTab('dashboard'); 
+ document.querySelector('[data-tab="dashboard"]').click();
   logSec('🔐', 'Login: "'+matchedUser.name+'" ('+(ROLE_LABELS[matchedUser.role]||matchedUser.role)+')');
   document.getElementById('login-overlay').style.display = 'none';
   document.getElementById('role-pill-label').textContent = matchedUser.name;
