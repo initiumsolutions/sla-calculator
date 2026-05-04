@@ -1142,17 +1142,7 @@
 
 <div id="toast"></div>
 
-// Logging function (safe)
-function logSec(icon, message) {
-  console.log(icon, message);
-}
 
-// Role labels mapping (UI display names)
-const ROLE_LABELS = {
-  admin: "Admin",
-  nonadmin: "Staff",
-  customer: "Customer"
-};
 <script>
 // ── Auth ──────────────────────────────────────────────────────────────────
 // Roles: admin | nonadmin | customer
@@ -1198,7 +1188,6 @@ function doLogin() {
   }
   currentRole = matchedUser.role;
   currentUser = matchedUser;
- 
   logSec('🔐', 'Login: "'+matchedUser.name+'" ('+(ROLE_LABELS[matchedUser.role]||matchedUser.role)+')');
   document.getElementById('login-overlay').style.display = 'none';
   document.getElementById('role-pill-label').textContent = matchedUser.name;
@@ -1266,6 +1255,93 @@ function applyFinanceTableCols(show) {
   document.querySelectorAll('thead th').forEach(th => {
     if (th.textContent.trim() === 'Cost') th.style.display = show ? '' : 'none';
   });
+}
+
+// ── ROLE LABELS (was missing — caused ReferenceError that broke doLogin) ─────
+const ROLE_LABELS = { admin: 'Admin', nonadmin: 'Staff', customer: 'Customer' };
+
+// ── Security Log (was missing — logSec() called in doLogin, doLogout, etc.) ──
+var secLog = [];
+
+function logSec(icon, msg) {
+  var ts = new Date().toLocaleTimeString();
+  secLog.unshift({ icon: icon, msg: msg, ts: ts });
+  if (secLog.length > 50) secLog.pop();
+  renderSecLog();
+}
+
+function renderSecLog() {
+  var el = document.getElementById('sec-log-panel');
+  if (!el) return;
+  if (!secLog.length) {
+    el.innerHTML = '<div class="sec-log-item"><span class="sec-log-icon">ℹ️</span><span class="sec-log-msg">No activity yet.</span></div>';
+    return;
+  }
+  el.innerHTML = secLog.map(function(e) {
+    return '<div class="sec-log-item" style="display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid var(--gray100);font-size:12px;">'
+      + '<span class="sec-log-icon">' + e.icon + '</span>'
+      + '<span class="sec-log-msg" style="flex:1;">' + e.msg + '</span>'
+      + '<span style="font-size:10px;color:var(--text3);white-space:nowrap;">' + e.ts + '</span></div>';
+  }).join('');
+}
+
+function clearSecLog() {
+  secLog = [];
+  renderSecLog();
+  toast('Security log cleared.');
+}
+
+// ── Confirm Modal (was missing — showConfirm used for delete/reset actions) ──
+function showConfirm(icon, title, msg, cb, isDanger) {
+  document.getElementById('confirm-icon').textContent  = icon  || '⚠️';
+  document.getElementById('confirm-title').textContent = title || 'Are you sure?';
+  document.getElementById('confirm-msg').textContent   = msg   || '';
+  var btn = document.getElementById('confirm-ok-btn');
+  btn.style.background = isDanger ? 'var(--red)' : 'var(--blue2)';
+  btn.onclick = function() { if (cb) cb(); closeConfirm(); };
+  document.getElementById('confirm-modal').classList.add('show');
+}
+
+function closeConfirm() {
+  document.getElementById('confirm-modal').classList.remove('show');
+}
+
+// ── Password Strength (was missing — used in add-user & edit-user forms) ─────
+function checkStrength(inputId, strengthId) {
+  var val = document.getElementById(inputId) ? document.getElementById(inputId).value : '';
+  var el  = document.getElementById(strengthId);
+  if (!el) return;
+  if (!val) { el.textContent = ''; el.style.color = ''; return; }
+  var score = 0;
+  if (val.length >= 8)            score++;
+  if (/[A-Z]/.test(val))          score++;
+  if (/[0-9]/.test(val))          score++;
+  if (/[^A-Za-z0-9]/.test(val))   score++;
+  var labels = ['', 'Weak', 'Fair', 'Good', 'Strong'];
+  var colors = ['','#e53e3e','#ed8936','#38a169','#2b6cb0'];
+  el.textContent = labels[score] || '';
+  el.style.color  = colors[score] || '';
+}
+
+// ── User Card Helpers (was missing — avatarBg/initials/roleTag used in renderUserList) ──
+function avatarBg(role) {
+  return { admin:'#f6ad55', nonadmin:'#68d391', customer:'#63b3ed' }[role] || '#a0aec0';
+}
+
+function initials(name) {
+  if (!name) return '?';
+  var parts = name.trim().split(/\s+/);
+  return parts.length === 1
+    ? parts[0].charAt(0).toUpperCase()
+    : (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+}
+
+function roleTag(role) {
+  var label = ROLE_LABELS[role] || role;
+  var c = { admin:'#f6ad55', nonadmin:'#68d391', customer:'#63b3ed' }[role] || '#a0aec0';
+  return '<span style="display:inline-block;padding:1px 7px;border-radius:10px;'
+    + 'font-size:10px;font-weight:600;background:' + c + '22;color:' + c
+    + ';border:1px solid ' + c + '44;margin-right:6px;">' + label + '</span>';
 }
 </script>
 
