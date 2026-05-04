@@ -1188,6 +1188,11 @@ function doLogin() {
   }
   currentRole = matchedUser.role;
   currentUser = matchedUser;
+ localStorage.setItem('slaSession', JSON.stringify({
+  userId: matchedUser.id,
+  role: matchedUser.role
+}));
+
   logSec('🔐', 'Login: "'+matchedUser.name+'" ('+(ROLE_LABELS[matchedUser.role]||matchedUser.role)+')');
   document.getElementById('login-overlay').style.display = 'none';
   document.getElementById('role-pill-label').textContent = matchedUser.name;
@@ -1196,14 +1201,48 @@ function doLogin() {
   render();
   applyRole();
 }
+function restoreSession() {
+  var raw = localStorage.getItem('slaSession');
+  if (!raw) return false;
 
+  try {
+    var session = JSON.parse(raw);
+    var user = usersCache.find(function(u) {
+      return u.id === session.userId &&
+             u.role === session.role &&
+             u.active !== false;
+    });
+
+    if (!user) {
+      localStorage.removeItem('slaSession');
+      return false;
+    }
+
+    currentRole = user.role;
+    currentUser = user;
+
+    document.getElementById('login-overlay').style.display = 'none';
+
+    switchTab('dashboard');
+    render();
+    applyRole();
+
+    return true;
+  } catch (e) {
+    localStorage.removeItem('slaSession');
+    return false;
+  }
+}
 function doLogout() {
   if (!confirm('Log out?')) return;
   if (currentUser) logSec('🚪', 'Logout: "'+currentUser.name+'"');
+ localStorage.removeItem('slaSession');
   currentRole = null; currentUser = null;
   document.getElementById('login-pass').value = '';
   document.getElementById('login-error').textContent = '';
   selectRole('admin');
+ 
+  switchTab('dashboard');
   document.getElementById('login-overlay').style.display = 'flex';
 }
 
