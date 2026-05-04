@@ -2142,11 +2142,19 @@ function saveUserPassword(uid) {
 window.addEventListener('load', function() {
   document.getElementById('f-date').valueAsDate = new Date();
   initCharts();
-  render(); // render empty state first
+  render();
+
   document.getElementById('db-mgmt-card').style.display = 'none';
-  // Load from Supabase
+
   dbInit().then(function() {
-    render(); // re-render with real data
+    render();
+
+    var restored = restoreSession();
+
+    if (!restored) {
+      document.getElementById('login-overlay').style.display = 'flex';
+      switchTab('dashboard');
+    }
   });
 });
 </script>
