@@ -755,7 +755,7 @@
 <div class="db-status-bar" id="db-status-bar">
   <div>
     <span class="db-dot ok" id="db-dot"></span>
-    <span id="db-status-text">JSON Database · Connected</span>
+    <span id="db-status-text">JSON Database · Saved locally</span>
     &nbsp;·&nbsp;
     <span id="db-size-text">–</span>
     &nbsp;·&nbsp;
@@ -1298,10 +1298,24 @@ const DEFAULT_DB = {
 // ── DB Operations ─────────────────────────────────────────────────────────────
 function dbLoad() {
   try {
-    const raw = localStorage.getItem(DB_KEY);
-    if (!raw) { dbSave(DEFAULT_DB); return JSON.parse(JSON.stringify(DEFAULT_DB)); }
-    return JSON.parse(raw);
-  } catch(e) { return JSON.parse(JSON.stringify(DEFAULT_DB)); }
+    var raw = localStorage.getItem(DB_KEY);
+    if (!raw || raw === 'undefined' || raw === 'null') {
+      var fresh = JSON.parse(JSON.stringify(DEFAULT_DB));
+      localStorage.setItem(DB_KEY, JSON.stringify(fresh));
+      return fresh;
+    }
+    var parsed = JSON.parse(raw);
+    // Ensure all required keys exist (schema migration)
+    if (!parsed.entries)      parsed.entries      = [];
+    if (!parsed.users)        parsed.users        = DEFAULT_DB.users;
+    if (!parsed.settings)     parsed.settings     = DEFAULT_DB.settings;
+    if (!parsed.backupHistory)parsed.backupHistory = [];
+    if (!parsed.nextId)       parsed.nextId       = (parsed.entries.length ? Math.max.apply(null, parsed.entries.map(function(e){return e.id;})) + 1 : 1);
+    return parsed;
+  } catch(e) {
+    console.warn('DB load error, using defaults:', e);
+    return JSON.parse(JSON.stringify(DEFAULT_DB));
+  }
 }
 
 function dbSave(db) {
@@ -1680,43 +1694,8 @@ function loadFromDB() {
   renderUserList(db);
 }
 
-// ── Patch addEntry to persist ─────────────────────────────────────────────────
-const _origAddEntry = addEntry;
-addEntry = function() {
-  const before = entries.length;
-  _origAddEntry();
-  if (entries.length > before) {
-    // Entry was added — persist
-    const db = dbGet();
-    db.entries = entries.map(e=>({...e}));
-    db.nextId  = nextId;
-    if (!db.backupHistory) db.backupHistory = [];
-    db.backupHistory.push({ ts: new Date().toISOString(), label: 'Auto-save — entry added' });
-    dbCommit(db);
-  }
-};
 
-// ── Patch deleteEntry to persist ──────────────────────────────────────────────
-const _origDeleteEntry = deleteEntry;
-deleteEntry = function(id) {
-  const before = entries.length;
-  _origDeleteEntry(id);
-  if (entries.length < before) {
-    const db = dbGet();
-    db.entries = entries.map(e=>({...e}));
-    dbCommit(db);
-  }
-};
 
-// ── Patch saveSettings to persist ─────────────────────────────────────────────
-const _origSaveSettings = saveSettings;
-saveSettings = function() {
-  _origSaveSettings();
-  const db = dbGet();
-  db.settings = { ...config };
-  dbCommit(db);
-  toast('Settings saved to database.');
-};
 
 // ── Runtime state (will be populated from DB on load) ──────────────────────
 let config = {
@@ -1876,6 +1855,13 @@ function render() {
     document.getElementById('ft-cost').textContent   = fmtUSD(totalCost);
   }
 
+  // ── Re-apply role restrictions after every render ──
+  if (currentRole && ROLE_META[currentRole]) {
+    var rMeta = ROLE_META[currentRole];
+    applyFinanceTableCols(rMeta.canFinance);
+    document.querySelectorAll('.btn-danger').forEach(function(b){ b.style.display = rMeta.canSettings ? '' : 'none'; });
+  }
+
   // ── Settings Summary ──
   document.getElementById('settings-summary').innerHTML = `
     <div class="setting-row"><span class="setting-key">Agreement Code</span><span class="setting-val">AGR-020267-SLA-2025</span></div>
@@ -1893,28 +1879,46 @@ function render() {
 
 // ── Actions ─────────────────────────────────────────────────────────────────
 function addEntry() {
-  const date     = document.getElementById('f-date').value;
-  const ticket   = document.getElementById('f-ticket').value.trim();
-  const type     = document.getElementById('f-type').value;
-  const hours    = parseFloat(document.getElementById('f-hours').value);
-  const engineer = document.getElementById('f-engineer').value.trim();
-  const status   = document.getElementById('f-status').value;
-  const desc     = document.getElementById('f-desc').value.trim();
+  var date     = document.getElementById('f-date').value;
+  var ticket   = document.getElementById('f-ticket').value.trim();
+  var type     = document.getElementById('f-type').value;
+  var hours    = parseFloat(document.getElementById('f-hours').value);
+  var engineer = document.getElementById('f-engineer').value.trim();
+  var status   = document.getElementById('f-status').value;
+  var desc     = document.getElementById('f-desc').value.trim();
 
   if (!date || !ticket || !type || isNaN(hours) || hours <= 0 || !engineer) {
     toast('Please fill in all required fields.'); return;
   }
-  entries.push({ id: nextId++, date, ticket, type, hours, engineer, desc, status });
+  var newEntry = { id: nextId++, date: date, ticket: ticket, type: type, hours: hours, engineer: engineer, desc: desc, status: status };
+  entries.push(newEntry);
+
+  // Persist to DB immediately
+  var db = dbGet();
+  db.entries = entries.map(function(e){ return Object.assign({},e); });
+  db.nextId  = nextId;
+  if (!db.backupHistory) db.backupHistory = [];
+  db.backupHistory.push({ ts: new Date().toISOString(), label: 'Entry added: ' + ticket });
+  dbCommit(db);
+
   clearForm();
   render();
-  toast('Entry added successfully.');
+  if (currentRole) { var meta2=ROLE_META[currentRole]; applyFinanceTableCols(meta2.canFinance); document.querySelectorAll('.btn-danger').forEach(function(b){ b.style.display=meta2.canSettings?'':'none'; }); }
+  toast('Entry added and saved.');
 }
 
 function deleteEntry(id) {
   if (!confirm('Delete this entry?')) return;
-  entries = entries.filter(e => e.id !== id);
+  entries = entries.filter(function(e){ return e.id !== id; });
+
+  // Persist to DB immediately
+  var db = dbGet();
+  db.entries = entries.map(function(e){ return Object.assign({},e); });
+  dbCommit(db);
+
   render();
-  toast('Entry removed.');
+  if (currentRole) { var meta3=ROLE_META[currentRole]; applyFinanceTableCols(meta3.canFinance); document.querySelectorAll('.btn-danger').forEach(function(b){ b.style.display=meta3.canSettings?'':'none'; }); }
+  toast('Entry deleted and saved.');
 }
 
 function clearForm() {
@@ -1931,8 +1935,15 @@ function saveSettings() {
   config.multReg    = parseFloat(document.getElementById('s-mult-reg').value) || 1.00;
   config.multAH     = parseFloat(document.getElementById('s-mult-ah').value)  || 1.75;
   config.multWK     = parseFloat(document.getElementById('s-mult-wk').value)  || 2.00;
+
+  // Persist to DB immediately
+  var db = dbGet();
+  db.settings = { contracted: config.contracted, rate: config.rate, from: config.from,
+                  to: config.to, multReg: config.multReg, multAH: config.multAH, multWK: config.multWK };
+  dbCommit(db);
+
   render();
-  toast('Settings saved.');
+  toast('Settings saved to database.');
 }
 
 function switchTab(name) {
@@ -1995,32 +2006,28 @@ function downloadCSV() {
   URL.revokeObjectURL(a.href);
 }
 
-// ── patch render to re-apply finance cols after table rebuild ─────────────
-const _origRender = render;
-render = function() {
-  _origRender();
-  if (currentRole) {
-    const meta = ROLE_META[currentRole];
-    applyFinanceTableCols(meta.canFinance);
-    document.querySelectorAll('.btn-danger').forEach(btn => {
-      btn.style.display = meta.canSettings ? '' : 'none';
-    });
-  }
-};
+
 
 // ── Init ────────────────────────────────────────────────────────────────────
-window.addEventListener('load', () => {
+window.addEventListener('load', function() {
   document.getElementById('f-date').valueAsDate = new Date();
-  // Wire confirm button (must be done after DOM ready)
-  document.getElementById('confirm-ok-btn').addEventListener('click', () => {
-    closeConfirm();
-    if (confirmCallback) confirmCallback();
-  });
   loadFromDB();
   initCharts();
   render();
-  // Hide DB mgmt card for non-admins (will be shown after login applyRole)
   document.getElementById('db-mgmt-card').style.display = 'none';
+});
+
+// Safety save on page close/refresh
+window.addEventListener('beforeunload', function() {
+  try {
+    var db = dbGet();
+    db.entries  = entries.map(function(e){ return Object.assign({},e); });
+    db.nextId   = nextId;
+    db.settings = { contracted: config.contracted, rate: config.rate, from: config.from,
+                    to: config.to, multReg: config.multReg, multAH: config.multAH, multWK: config.multWK };
+    db.meta.lastSaved = new Date().toISOString();
+    localStorage.setItem(DB_KEY, JSON.stringify(db));
+  } catch(e) {}
 });
 </script>
 
