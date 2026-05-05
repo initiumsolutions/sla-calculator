@@ -720,7 +720,8 @@ body.auth-checking #login-overlay {
   display: none !important;
 }
 </style>
- 
+ <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
 </head>
 <body class="auth-checking">
 
@@ -982,8 +983,8 @@ body.auth-checking #login-overlay {
       <span class="section-title">SLA Log Entries</span>
       <div style="display:flex;align-items:center;gap:10px;">
         <span style="font-size:12px;color:var(--text3);" id="entry-count">0 entries</span>
-        <button class="btn btn-download" onclick="downloadCSV()" title="Download log as CSV">
-          ↓ Download CSV
+        <button class="btn btn-download" onclick="downloadPDF()" style="background:#b02b2b;" title="Download log as PDF"> 
+          ↓ Download PDF 
         </button>
       </div>
     </div>
@@ -2026,8 +2027,155 @@ function downloadCSV() {
   URL.revokeObjectURL(a.href);
 }
 
+// Function to handle downloading the PDF
+async function downloadPDF() {
+  const { jsPDF } = window.jspdf;
+  
+  const isAdmin = ROLE_META[currentRole] && ROLE_META[currentRole].canFinance;
+  const doc = jsPDF({ orientation: "Landscape", unit: "mm", format: "a4" });
 
+  const headerHeight = 40;
+  doc.setFillColor(15, 31, 61); // Navy Blue
+  doc.rect(0, 0, 297, headerHeight, 'F');
+  
+  doc.setDrawColor(246, 173, 85); // Orange/Amber Border
+  doc.setLineWidth(1.5);
+  doc.line(0, headerHeight, 297, headerHeight);
 
+  
+  const logoX = 10;
+  const logoY = 5;
+  const logoWidth = 40; 
+  const logoHeight = 20; 
+  
+  const imgElement = document.querySelector("img");
+  let logoBase64 = "";
+
+  if (imgElement && imgElement.src) {
+    // Convert image to base64 using canvas
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    const img = new Image();
+    img.crossOrigin = "Anonymous"; // important if external
+
+    await new Promise((resolve) => {
+      img.onload = function () {
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
+        logoBase64 = canvas.toDataURL("image/png");
+        resolve();
+      };
+      img.src = imgElement.src;
+    });
+  }
+
+  if (logoBase64) {
+    doc.addImage(logoBase64, "PNG", 10, 10, 50, 20);
+  }
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(10);
+  const leftTextX = logoX + 2;
+  let leftTextY = logoY + logoHeight + 2;
+
+  const leftLines = [" ", " ", "Engagement Center", " ", " "];
+  const lineHeight = 4;
+  leftLines.forEach(line => {
+    doc.text(leftTextX, leftTextY, line);
+    leftTextY += lineHeight;
+  });
+
+  // === Dynamic data calculations ===
+  const totalSLA = entries.reduce((s, e) => s + slaHrs(e), 0);
+  
+  // Calculate dynamic date range for the Report Period
+  let reportPeriod = "N/A";
+  if (entries.length > 0) {
+    // Sort dates to find the earliest and latest
+    const dates = entries.map(e => e.date).sort();
+    const startDate = fmtDate(dates[0]);
+    const endDate = fmtDate(dates[dates.length - 1]);
+    reportPeriod = `${startDate} to ${endDate}`;
+  }
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(20);
+  doc.text("Palm Hills Developments", 285, 25, { align: "right" });
+  doc.setFontSize(10);
+  doc.text("Customer Support Requests Report", 285, 15, { align: "right" });
+  doc.text(`Report Period: ${reportPeriod}`, 285, 33, { align: "right" }); // Dynamic
+
+  // --- SLA Summary Section ---
+  doc.setTextColor(43, 108, 176); // Section Title Blue
+  doc.setFontSize(14);
+  doc.text("SLA Summary", 14, 55);
+  
+  doc.autoTable({
+    startY: 60,
+    theme: 'grid',
+    head: [['Contracted Balance', 'Consumed Balance', 'Report Period', 'Period Consumption']],
+    body: [[
+      `${config.contracted.toLocaleString()} Credit Hours`, // Dynamic from config
+      `${totalSLA.toFixed(2)} Credit Hours`,                // Dynamic from actual consumed
+      reportPeriod,                                         // Dynamic from log dates
+      `${totalSLA.toFixed(2)} Credit Hours`                 // Dynamic from actual consumed
+    ]],
+    headStyles: { fillColor: [255, 255, 255], textColor: [113, 128, 150], fontSize: 8, halign: 'center' },
+    styles: { halign: 'center', fontSize: 12, fontStyle: 'bold', textColor: [15, 31, 61] }
+  });
+
+  // --- Period's Work Log (Role Restricted) ---
+  doc.setTextColor(43, 108, 176);
+  doc.text("Period's Work Log", 14, doc.lastAutoTable.finalY + 15);
+
+  const headers = isAdmin
+    ? ['#', 'Date', 'Ticket / Project', 'Hour Type', 'Engineer', 'Actual Hrs', 'Mult.', 'SLA Hrs', 'Cost (USD)', 'Status', 'Description']
+    : ['#', 'Date', 'Ticket / Project', 'Hour Type', 'Engineer', 'Actual Hrs', 'Mult.', 'SLA Hrs', 'Status', 'Description'];
+
+  const logData = entries.map((e, i) => {
+    const row = [
+      i + 1,
+      fmtDate(e.date),
+      e.ticket,
+      e.type,
+      e.engineer,
+      fmt(e.hours),
+      `x${fmt(mult(e.type))}`,
+      fmt(slaHrs(e)),
+    ];
+    if (isAdmin) row.push(fmtUSD(cost(e)));
+    row.push(e.status, e.desc || "");
+    return row;
+  });
+
+  const totalActual = entries.reduce((s, e) => s + e.hours, 0);
+  const totalCost = entries.reduce((s, e) => s + cost(e), 0);
+  
+  const footerRow = isAdmin 
+    ? ['TOTAL', '', '', '', '', fmt(totalActual), '', fmt(totalSLA), fmtUSD(totalCost), '', '']
+    : ['TOTAL', '', '', '', '', fmt(totalActual), '', fmt(totalSLA), '', ''];
+
+  doc.autoTable({
+    startY: doc.lastAutoTable.finalY + 20,
+    head: [headers],
+    body: [...logData, footerRow],
+    headStyles: { fillColor: [43, 108, 176], fontSize: 8 },
+    styles: { fontSize: 7, verticalAlign: 'middle' },
+    columnStyles: {
+      2: { cellWidth: 40 }, 
+      10: { cellWidth: 50 } 
+    },
+    didParseCell: function (data) {
+      if (data.row.index === logData.length) {
+        data.cell.styles.fontStyle = 'bold';
+        data.cell.styles.fillColor = [247, 250, 252];
+      }
+    }
+  });
+
+  doc.save(`Detailed_SLA_Report_AGR-020267_${new Date().toISOString().slice(0,10)}.pdf`);
+}
 // ── Init ────────────────────────────────────────────────────────────────────
 
 function renderUserList(usrs) {
