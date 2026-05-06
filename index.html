@@ -1199,7 +1199,7 @@ function doLogin() {
   }
   currentRole = matchedUser.role;
   currentUser = matchedUser;
- localStorage.setItem('slaSession', JSON.stringify({
+ sessionStorage.setItem('slaSession', JSON.stringify({
   userId: matchedUser.id,
   role: matchedUser.role
 }));
@@ -1231,7 +1231,7 @@ function doLogin() {
   return savedTab;
 }
 function restoreSession() {
-  var raw = localStorage.getItem('slaSession');
+  var raw = sessionStorage.getItem('slaSession');
   if (!raw) return false;
 
   try {
@@ -1243,7 +1243,7 @@ function restoreSession() {
     });
 
     if (!user) {
-      localStorage.removeItem('slaSession');
+      sessionStorage.removeItem('slaSession');
       return false;
     }
 
@@ -1259,14 +1259,14 @@ var savedTab = getSavedTab();
 switchTab(savedTab);
     return true;
   } catch (e) {
-    localStorage.removeItem('slaSession');
+    sessionStorage.removeItem('slaSession');
     return false;
   }
 }
 function doLogout() {
   if (!confirm('Log out?')) return;
   if (currentUser) logSec('🚪', 'Logout: "'+currentUser.name+'"');
- localStorage.removeItem('slaSession');
+ sessionStorage.removeItem('slaSession');
  localStorage.removeItem('slaActiveTab');
   currentRole = null; currentUser = null;
   document.getElementById('login-pass').value = '';
