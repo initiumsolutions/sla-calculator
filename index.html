@@ -1598,7 +1598,8 @@ async function generatePDF() {
     doc.setFontSize(7); doc.setFont('helvetica','normal'); doc.setTextColor(40,50,70);
     doc.text(String(i+1),           M+1,      y+4.5);
     doc.text(e.date,                M+9,      y+4.5);
-    doc.text((e.ticket||'–').substring(0,14), M+32, y+4.5);
+    //doc.text((e.ticket||'–').substring(0,14), M+32, y+4.5);
+    doc.text(e.ticket || '–', M+32, y+4.5);
     doc.text(e.type,                M+61,     y+4.5);
     doc.text((e.engineer||'–').substring(0,14), M+92, y+4.5);
     doc.text(e.status||'–',         M+121,    y+4.5);
