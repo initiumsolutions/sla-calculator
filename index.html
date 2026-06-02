@@ -1517,11 +1517,11 @@ async function generatePDF() {
   y += 9;
 
   const summRows = [
-    ['Contracted Balance',  contracted + ' SLA hrs',    (contracted*rate).toLocaleString('en-US',{style:'currency',currency:'USD'})],
-    ['Consumed Balance',    totalConsumed.toFixed(2)+' SLA hrs', (totalConsumed*rate).toLocaleString('en-US',{style:'currency',currency:'USD'})],
-    ['Report Period',       `${from} → ${to}`, ''],
-    ['Period Consumption',  periodSLA.toFixed(2)+' SLA hrs', (periodSLA*rate).toLocaleString('en-US',{style:'currency',currency:'USD'})],
-  ];
+  ['Contracted Balance', contracted + ' SLA hrs', ''],
+  ['Consumed Balance', totalConsumed.toFixed(2)+' SLA hrs', ''],
+  ['Report Period', `${from} → ${to}`, ''],
+  ['Period Consumption', periodSLA.toFixed(2)+' SLA hrs', '']
+];
 
   summRows.forEach((row, idx) => {
     if(idx%2===0) { doc.setFillColor(248,250,252); doc.rect(M,y,CW,7,'F'); }
@@ -1549,10 +1549,8 @@ async function generatePDF() {
   doc.setFont('helvetica','bold'); doc.setFontSize(12);
   doc.setTextColor(39,103,73);
   doc.text(paidSLA.toFixed(2)+' SLA hrs', M+4, y+13);
-  doc.setFontSize(8); doc.text((paidSLA*rate).toLocaleString('en-US',{style:'currency',currency:'USD'}), M+4, y+18);
   doc.setFontSize(12); doc.setTextColor(138,88,0);
   doc.text(unpaidSLA.toFixed(2)+' SLA hrs', M+CW/2+7, y+13);
-  doc.setFontSize(8); doc.text((unpaidSLA*rate).toLocaleString('en-US',{style:'currency',currency:'USD'}), M+CW/2+7, y+18);
   doc.setTextColor(0,0,0);
   y += 28;
 
@@ -1637,7 +1635,7 @@ function exportPDF() { showPDFModal(); }
 // ── 11. CSV EXPORT ────────────────────────────────────────────────────────────
 function exportCSV() {
   const c = STATE.contract;
-  const rate = c ? c.hourly_rate : 27.5;
+  // const rate = c ? c.hourly_rate : 27.5;
   const headers = ['#','Date','Ticket','Type','Engineer','Actual Hrs','Multiplier','SLA Hrs','Cost (USD)','Status','Payment Status','Quarter Paid','Description'];
   const rows = [...STATE.entries].sort((a,b)=>a.date.localeCompare(b.date)).map((e,i) => [
     i+1, e.date, e.ticket||'', e.type, e.engineer||'', e.hours, getMultiplier(e.type), e.sla_hours,
