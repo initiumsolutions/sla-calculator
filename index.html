@@ -1328,7 +1328,7 @@ function editEntry(id) {
   document.getElementById('f-status').value   = e.status || 'Completed';
   document.getElementById('f-desc').value     = e.description || '';
 
-  document.getElementById('entry-form-title').textContent  = '✎ Edit Entry #' + e.id;
+  document.getElementById('entry-form-title').textContent  = '✎ Edit Entry — ' + (e.ticket || e.date);
   document.getElementById('entry-form-submit').textContent = '✓ Save Changes';
   document.getElementById('entry-form-clear').textContent  = 'Cancel';
 
