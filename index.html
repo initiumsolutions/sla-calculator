@@ -448,9 +448,9 @@ textarea{resize:vertical;min-height:56px}
       <div class="tabs">
         <button class="tab-btn active" onclick="switchTab('dashboard',this)">Dashboard</button>
         <button class="tab-btn"        onclick="switchTab('log',this)">Entry Log</button>
-        <button class="tab-btn"        onclick="switchTab('billing',this)">💳 Quarterly Billing</button>
-        <button class="tab-btn"        onclick="switchTab('settings',this)">Settings</button>
-        <button class="tab-btn"        onclick="switchTab('security',this)">🔐 Security</button>
+        <button class="tab-btn admin-only" onclick="switchTab('billing',this)">💳 Quarterly Billing</button>
+        <button class="tab-btn admin-only" onclick="switchTab('settings',this)">Settings</button>
+        <button class="tab-btn admin-only" onclick="switchTab('security',this)">🔐 Security</button>
         <button class="tab-btn admin-only" onclick="switchTab('contracts',this)">📋 Contracts</button>
       </div>
     </div>
@@ -542,7 +542,7 @@ textarea{resize:vertical;min-height:56px}
     <!-- ── ENTRY LOG ── -->
     <div class="tab-pane" id="tab-log">
       <div class="form-card" id="add-entry-form">
-        <div class="section-header"><span class="section-title">Add New Entry</span></div>
+        <div class="section-header"><span class="section-title" id="entry-form-title">Add New Entry</span></div>
         <div class="form-grid">
           <div class="form-group"><label>Date</label><input type="date" id="f-date"></div>
           <div class="form-group"><label>Ticket / Project</label><input type="text" id="f-ticket" placeholder="e.g. TKT-007"></div>
@@ -567,8 +567,8 @@ textarea{resize:vertical;min-height:56px}
           <div class="form-group wide"><label>Description / Notes</label><textarea id="f-desc" placeholder="Brief description…"></textarea></div>
         </div>
         <div class="form-actions">
-          <button class="btn btn-ghost" onclick="clearForm()">Clear</button>
-          <button class="btn btn-primary" onclick="addEntry()">+ Add Entry</button>
+          <button class="btn btn-ghost" onclick="clearForm()" id="entry-form-clear">Clear</button>
+          <button class="btn btn-primary" onclick="submitEntry()" id="entry-form-submit">+ Add Entry</button>
         </div>
       </div>
       <div class="section-header">
@@ -1031,6 +1031,15 @@ function applyRoleGating() {
   // Admin-only tabs
   document.querySelectorAll('.admin-only').forEach(el => el.style.display = isAdmin ? '' : 'none');
 
+  // If a non-admin is currently on an admin-only tab, bounce them to Dashboard
+  if (!isAdmin) {
+    const activeAdminPane = document.querySelector('#tab-billing.active, #tab-settings.active, #tab-security.active, #tab-contracts.active');
+    if (activeAdminPane) {
+      const dashBtn = document.querySelector('.tab-btn');
+      if (dashBtn) switchTab('dashboard', dashBtn);
+    }
+  }
+
   // Add user card
   const auc = document.getElementById('add-user-card');
   if (auc) auc.style.display = isAdmin ? 'block' : 'none';
@@ -1238,7 +1247,7 @@ function renderLog() {
       <td class="td-num fin-col" style="display:${isAdmin?'':'none'};">${(e.sla_hours*rate).toLocaleString('en-US',{style:'currency',currency:'USD'})}</td>
       <td>${statusHtml}</td>
       <td>${payHtml} ${lockIcon}</td>
-      <td>${isAdmin && !isPaid ? `<button class="btn-danger" onclick="deleteEntry('${e.id}')">✕</button>` : (isPaid ? '' : '')}</td>
+      <td style="white-space:nowrap;">${(STATE.role !== 'customer') && !isPaid ? `<button class="btn-ghost" style="padding:4px 8px;font-size:11px;margin-right:4px;" onclick="editEntry('${e.id}')" title="Edit entry">✎</button>` : ''}${isAdmin && !isPaid ? `<button class="btn-danger" onclick="deleteEntry('${e.id}')" title="Delete entry">✕</button>` : ''}</td>
     </tr>`;
   }).join('');
 
@@ -1253,10 +1262,11 @@ function renderLog() {
   document.getElementById('entry-count').textContent = entries.length + ' ' + (entries.length===1?'entry':'entries');
 }
 
-async function addEntry() {
-  if (STATE.role === 'customer') { toast('❌ View only — cannot add entries.'); return; }
-  if (!STATE.contract) { toast('⚠️ No contract selected.'); return; }
+function submitEntry() {
+  return STATE.editId ? updateEntry() : addEntry();
+}
 
+function readEntryForm() {
   const date    = document.getElementById('f-date').value;
   const ticket  = document.getElementById('f-ticket').value.trim();
   const type    = document.getElementById('f-type').value;
@@ -1265,16 +1275,23 @@ async function addEntry() {
   const status  = document.getElementById('f-status').value;
   const desc    = document.getElementById('f-desc').value.trim();
 
-  if (!date || !type || !hoursRaw) { toast('⚠️ Date, Type and Hours are required.'); return; }
+  if (!date || !type || !hoursRaw) { toast('⚠️ Date, Type and Hours are required.'); return null; }
   const hours = parseFloat(hoursRaw);
-  if (isNaN(hours) || hours <= 0) { toast('⚠️ Enter a valid number of hours.'); return; }
+  if (isNaN(hours) || hours <= 0) { toast('⚠️ Enter a valid number of hours.'); return null; }
+  const mult      = getMultiplier(type);
+  const sla_hours = parseFloat((hours * mult).toFixed(2));
+  return { date, ticket, type, hours, sla_hours, engineer, status, description: desc };
+}
 
-  const mult     = getMultiplier(type);
-  const sla_hours= parseFloat((hours * mult).toFixed(2));
+async function addEntry() {
+  if (STATE.role === 'customer') { toast('❌ View only — cannot add entries.'); return; }
+  if (!STATE.contract) { toast('⚠️ No contract selected.'); return; }
+
+  const fields = readEntryForm();
+  if (!fields) return;
 
   const entry = {
-    date, ticket, type, hours, sla_hours, engineer, status,
-    description: desc,
+    ...fields,
     contract_id: STATE.contract.id,
     payment_status: 'Unpaid',
     quarter_paid: ''
@@ -1292,8 +1309,61 @@ async function addEntry() {
     toast('✅ Entry saved to Supabase');
     setDBStatus('ok');
     updateDBInfo();
-    addSecLog('➕', `Entry added: ${ticket || date} (${sla_hours} SLA hrs)`);
+    addSecLog('➕', `Entry added: ${fields.ticket || fields.date} (${fields.sla_hours} SLA hrs)`);
   } catch(e) { setDBStatus('error'); toast('❌ Save failed: ' + e.message); }
+}
+
+function editEntry(id) {
+  if (STATE.role === 'customer') { toast('❌ View only — cannot edit.'); return; }
+  const e = STATE.entries.find(x => x.id == id);
+  if (!e) { toast('⚠️ Entry not found.'); return; }
+  if (e.payment_status === 'Paid') { toast('🔒 Paid entries cannot be edited.'); return; }
+
+  STATE.editId = e.id;
+  document.getElementById('f-date').value     = e.date || '';
+  document.getElementById('f-ticket').value   = e.ticket || '';
+  document.getElementById('f-type').value     = e.type || '';
+  document.getElementById('f-hours').value    = e.hours || '';
+  document.getElementById('f-engineer').value = e.engineer || '';
+  document.getElementById('f-status').value   = e.status || 'Completed';
+  document.getElementById('f-desc').value     = e.description || '';
+
+  document.getElementById('entry-form-title').textContent  = '✎ Edit Entry #' + e.id;
+  document.getElementById('entry-form-submit').textContent = '✓ Save Changes';
+  document.getElementById('entry-form-clear').textContent  = 'Cancel';
+
+  const form = document.getElementById('add-entry-form');
+  form.style.borderLeft = '4px solid var(--accent)';
+  form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function updateEntry() {
+  if (STATE.role === 'customer') { toast('❌ View only.'); return; }
+  if (!STATE.editId) return;
+
+  const fields = readEntryForm();
+  if (!fields) return;
+
+  const id = STATE.editId;
+  const existing = STATE.entries.find(x => x.id == id);
+  if (!existing) { toast('⚠️ Entry no longer exists.'); clearForm(); return; }
+  if (existing.payment_status === 'Paid') { toast('🔒 Paid entries cannot be edited.'); clearForm(); return; }
+
+  setDBStatus('saving');
+  try {
+    const updated = await sbPatch('sla_entries', `id=eq.${id}`, fields);
+    const row = (Array.isArray(updated) && updated[0]) ? updated[0] : { ...existing, ...fields };
+    const norm = normalizeEntry(row);
+    STATE.entries = STATE.entries.map(x => x.id == id ? norm : x);
+    renderLog();
+    renderDashboard();
+    renderBilling();
+    clearForm();
+    toast('✅ Entry updated');
+    setDBStatus('ok');
+    updateDBInfo();
+    addSecLog('✎', `Entry edited: ${fields.ticket || fields.date} (${fields.sla_hours} SLA hrs)`);
+  } catch(e) { setDBStatus('error'); toast('❌ Update failed: ' + e.message); }
 }
 
 async function deleteEntry(id) {
@@ -1319,6 +1389,13 @@ function clearForm() {
   });
   document.getElementById('f-type').value   = '';
   document.getElementById('f-status').value = 'Completed';
+
+  // Exit edit mode
+  STATE.editId = null;
+  const t = document.getElementById('entry-form-title');     if (t) t.textContent = 'Add New Entry';
+  const s = document.getElementById('entry-form-submit');    if (s) s.textContent = '+ Add Entry';
+  const c = document.getElementById('entry-form-clear');     if (c) c.textContent = 'Clear';
+  const form = document.getElementById('add-entry-form');    if (form) form.style.borderLeft = '';
 }
 
 // ── 9. QUARTERLY BILLING ─────────────────────────────────────────────────────
