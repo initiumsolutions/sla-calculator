@@ -215,8 +215,9 @@ tfoot td{background:var(--navy);color:rgba(255,255,255,0.85);padding:10px 12px;f
 .status-uat      {background:#ebf8ff;color:#1a6a8e;padding:2px 8px;border-radius:100px;font-size:10px;font-weight:600}
 .status-progress {background:#fffbeb;color:#8a5800;padding:2px 8px;border-radius:100px;font-size:10px;font-weight:600}
 .status-pending  {background:var(--gray100);color:var(--gray600);padding:2px 8px;border-radius:100px;font-size:10px;font-weight:600}
-.pay-badge-paid  {background:#f0fff4;color:#276749;border:1px solid #9ae6b4;padding:2px 8px;border-radius:100px;font-size:10px;font-weight:600}
-.pay-badge-unpaid{background:#fffbeb;color:#8a5800;border:1px solid #fbd38d;padding:2px 8px;border-radius:100px;font-size:10px;font-weight:600}
+.pay-badge-paid    {background:#f0fff4;color:#276749;border:1px solid #9ae6b4;padding:2px 8px;border-radius:100px;font-size:10px;font-weight:600}
+.pay-badge-unpaid  {background:#fffbeb;color:#8a5800;border:1px solid #fbd38d;padding:2px 8px;border-radius:100px;font-size:10px;font-weight:600}
+.pay-badge-reported{background:#ebf8ff;color:#1a4480;border:1px solid #90cdf4;padding:2px 8px;border-radius:100px;font-size:10px;font-weight:600}
 
 /* ── Form ── */
 .form-card{background:var(--white);border-radius:var(--radius-lg);padding:20px 22px;box-shadow:var(--shadow);border:1px solid var(--gray200);margin-bottom:20px}
@@ -716,6 +717,17 @@ textarea{resize:vertical;min-height:56px}
     <div class="form-group" style="margin-bottom:12px;"><label>Report Period From</label><input type="date" id="pdf-from"></div>
     <div class="form-group" style="margin-bottom:12px;"><label>Report Period To</label><input type="date" id="pdf-to"></div>
     <div class="form-group"><label>Report Title (optional)</label><input type="text" id="pdf-title" placeholder="Customer Support Requests Report"></div>
+
+    <div class="form-group" style="margin-top:8px;padding:10px 12px;background:#f7fafc;border:1px solid var(--gray200);border-radius:8px;">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:0;font-weight:500;">
+        <input type="checkbox" id="pdf-only-new" checked style="margin:0;width:16px;height:16px;cursor:pointer;">
+        <span>Only include new entries (not yet reported)</span>
+      </label>
+      <div style="font-size:11px;color:var(--text3);margin-top:4px;margin-left:24px;">
+        After export, included entries will be marked <b style="color:#1a4480;">Reported</b>.
+      </div>
+    </div>
+
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closePDFModal()">Cancel</button>
       <button class="btn btn-pdf" onclick="generatePDF()">Generate PDF</button>
@@ -1231,7 +1243,9 @@ function renderLog() {
         : '<span class="badge badge-weekend">Weekend</span>';
     const payHtml = isPaid
       ? `<span class="pay-badge-paid">✓ Paid</span>${e.quarter_paid ? '<br><span style="font-size:9px;color:var(--green2);font-family:monospace;">'+e.quarter_paid+'</span>' : ''}`
-      : '<span class="pay-badge-unpaid">Unpaid</span>';
+      : e.payment_status === 'Reported'
+        ? '<span class="pay-badge-reported">📤 Reported</span>'
+        : '<span class="pay-badge-unpaid">Unpaid</span>';
     const rowCls = isPaid ? 'paid-row' : '';
     const lockIcon = isPaid ? '🔒' : '';
     const statusHtml = STATUS_HTML[e.status] || e.status || '–';
@@ -1414,7 +1428,9 @@ function renderBillingTable() {
     const isPaid = e.payment_status === 'Paid';
     const payHtml = isPaid
       ? `<span class="pay-badge-paid">✓ Paid · ${e.quarter_paid||''}</span>`
-      : '<span class="pay-badge-unpaid">● Unpaid</span>';
+      : e.payment_status === 'Reported'
+        ? '<span class="pay-badge-reported">📤 Reported</span>'
+        : '<span class="pay-badge-unpaid">● Unpaid</span>';
     const typeHtml = e.type === 'Regular'
       ? '<span class="badge badge-regular">Regular</span>'
       : e.type === 'After-Hours'
@@ -1528,6 +1544,8 @@ async function generatePDF() {
 
   if (!from || !to) { toast('⚠️ Select date range.'); return; }
 
+  const onlyNew = !!(document.getElementById('pdf-only-new') && document.getElementById('pdf-only-new').checked);
+
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
   const W = 210, H = 297, M = 14, CW = W - M*2;
@@ -1543,8 +1561,18 @@ async function generatePDF() {
     return `${d} ${MONTHS[parseInt(m,10)-1]} ${y}`;
   }
 
-  const periodEntries = STATE.entries.filter(e => e.date >= from && e.date <= to)
-    .sort((a,b) => a.date.localeCompare(b.date));
+  let periodEntries = STATE.entries.filter(e => e.date >= from && e.date <= to);
+  if (onlyNew) {
+    periodEntries = periodEntries.filter(e => e.payment_status !== 'Reported' && e.payment_status !== 'Paid');
+  }
+  periodEntries.sort((a,b) => a.date.localeCompare(b.date));
+
+  if (periodEntries.length === 0) {
+    toast(onlyNew
+      ? '⚠️ No new entries in this range — everything has already been reported or paid.'
+      : '⚠️ No entries in this range.');
+    return;
+  }
   const periodSLA     = periodEntries.reduce((s,e)=>s+e.sla_hours,0);
   const totalConsumed = STATE.entries.reduce((s,e)=>s+e.sla_hours,0);
   const contracted    = c ? c.contracted_hours : 0;
@@ -1789,6 +1817,28 @@ async function generatePDF() {
   doc.save(filename);
   toast('📄 PDF exported: ' + filename);
   addSecLog('📄', `PDF exported: ${from} → ${to}`);
+
+  // ── Mark included Unpaid entries as Reported ──
+  if (onlyNew) {
+    const toMark = periodEntries.filter(e => e.payment_status === 'Unpaid');
+    if (toMark.length) {
+      const ids = toMark.map(e => e.id).join(',');
+      try {
+        await sbPatch('sla_entries', `id=in.(${ids})`, { payment_status: 'Reported' });
+        toMark.forEach(e => {
+          const idx = STATE.entries.findIndex(x => x.id == e.id);
+          if (idx >= 0) STATE.entries[idx].payment_status = 'Reported';
+        });
+        renderLog();
+        renderDashboard();
+        renderBilling();
+        toast(`📤 ${toMark.length} ${toMark.length===1?'entry':'entries'} marked as Reported.`);
+        addSecLog('📤', `Marked ${toMark.length} entries as Reported (${from} → ${to})`);
+      } catch (err) {
+        toast('⚠️ PDF saved but could not mark entries as Reported: ' + err.message);
+      }
+    }
+  }
 }
 
 function exportPDF() { showPDFModal(); }
