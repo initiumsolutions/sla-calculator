@@ -721,10 +721,10 @@ textarea{resize:vertical;min-height:56px}
     <div class="form-group" style="margin-top:8px;padding:10px 12px;background:#f7fafc;border:1px solid var(--gray200);border-radius:8px;">
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:0;font-weight:500;">
         <input type="checkbox" id="pdf-only-new" checked style="margin:0;width:16px;height:16px;cursor:pointer;">
-        <span>Only include new entries (not yet reported)</span>
+        <span>Only include new entries (not yet sent)</span>
       </label>
       <div style="font-size:11px;color:var(--text3);margin-top:4px;margin-left:24px;">
-        After export, included entries will be marked <b style="color:#1a4480;">Reported</b>.
+        After export, included entries will be marked <b style="color:#1a4480;">Pending Collection</b>.
       </div>
     </div>
 
@@ -1243,8 +1243,8 @@ function renderLog() {
         : '<span class="badge badge-weekend">Weekend</span>';
     const payHtml = isPaid
       ? `<span class="pay-badge-paid">Paid</span>${e.quarter_paid ? '<br><span style="font-size:9px;color:var(--green2);font-family:monospace;">'+e.quarter_paid+'</span>' : ''}`
-      : e.payment_status === 'Reported'
-        ? '<span class="pay-badge-reported">Reported</span>'
+      : e.payment_status === 'Pending Collection'
+        ? '<span class="pay-badge-reported">Pending Collection</span>'
         : '<span class="pay-badge-unpaid">Unpaid</span>';
     const rowCls = isPaid ? 'paid-row' : '';
     const lockIcon = isPaid ? '🔒' : '';
@@ -1428,8 +1428,8 @@ function renderBillingTable() {
     const isPaid = e.payment_status === 'Paid';
     const payHtml = isPaid
       ? `<span class="pay-badge-paid">Paid${e.quarter_paid ? ' · '+e.quarter_paid : ''}</span>`
-      : e.payment_status === 'Reported'
-        ? '<span class="pay-badge-reported">Reported</span>'
+      : e.payment_status === 'Pending Collection'
+        ? '<span class="pay-badge-reported">Pending Collection</span>'
         : '<span class="pay-badge-unpaid">Unpaid</span>';
     const typeHtml = e.type === 'Regular'
       ? '<span class="badge badge-regular">Regular</span>'
@@ -1563,13 +1563,13 @@ async function generatePDF() {
 
   let periodEntries = STATE.entries.filter(e => e.date >= from && e.date <= to);
   if (onlyNew) {
-    periodEntries = periodEntries.filter(e => e.payment_status !== 'Reported' && e.payment_status !== 'Paid');
+    periodEntries = periodEntries.filter(e => e.payment_status !== 'Pending Collection' && e.payment_status !== 'Paid');
   }
   periodEntries.sort((a,b) => a.date.localeCompare(b.date));
 
   if (periodEntries.length === 0) {
     toast(onlyNew
-      ? '⚠️ No new entries in this range — everything has already been reported or paid.'
+      ? '⚠️ No new entries in this range — everything is already pending collection or paid.'
       : '⚠️ No entries in this range.');
     return;
   }
@@ -1818,24 +1818,24 @@ async function generatePDF() {
   toast('📄 PDF exported: ' + filename);
   addSecLog('📄', `PDF exported: ${from} → ${to}`);
 
-  // ── Mark included Unpaid entries as Reported ──
+  // ── Mark included Unpaid entries as Pending Collection ──
   if (onlyNew) {
     const toMark = periodEntries.filter(e => e.payment_status === 'Unpaid');
     if (toMark.length) {
       const ids = toMark.map(e => e.id).join(',');
       try {
-        await sbPatch('sla_entries', `id=in.(${ids})`, { payment_status: 'Reported' });
+        await sbPatch('sla_entries', `id=in.(${ids})`, { payment_status: 'Pending Collection' });
         toMark.forEach(e => {
           const idx = STATE.entries.findIndex(x => x.id == e.id);
-          if (idx >= 0) STATE.entries[idx].payment_status = 'Reported';
+          if (idx >= 0) STATE.entries[idx].payment_status = 'Pending Collection';
         });
         renderLog();
         renderDashboard();
         renderBilling();
-        toast(`📤 ${toMark.length} ${toMark.length===1?'entry':'entries'} marked as Reported.`);
-        addSecLog('📤', `Marked ${toMark.length} entries as Reported (${from} → ${to})`);
+        toast(`${toMark.length} ${toMark.length===1?'entry':'entries'} moved to Pending Collection.`);
+        addSecLog('📋', `Marked ${toMark.length} entries as Pending Collection (${from} → ${to})`);
       } catch (err) {
-        toast('⚠️ PDF saved but could not mark entries as Reported: ' + err.message);
+        toast('⚠️ PDF saved but could not update entries: ' + err.message);
       }
     }
   }
