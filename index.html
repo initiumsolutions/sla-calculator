@@ -1434,7 +1434,14 @@ function renderBilling() {
 function renderBillingTable() {
   const tbody = document.getElementById('billing-tbody');
   if (!tbody) return;
-  const sorted = [...STATE.entries].sort((a,b) => a.date.localeCompare(b.date));
+  const sorted = [...STATE.entries]
+    .filter(e => e.payment_status === 'Pending Collection')
+    .sort((a,b) => a.date.localeCompare(b.date));
+
+  if (!sorted.length) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:28px;color:var(--text3);font-style:italic;">No entries pending collection. Export a PDF to mark new entries as Pending Collection.</td></tr>';
+    return;
+  }
 
   tbody.innerHTML = sorted.map((e,i) => {
     const isPaid = e.payment_status === 'Paid';
