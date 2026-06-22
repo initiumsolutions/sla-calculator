@@ -1242,9 +1242,9 @@ function renderLog() {
         ? '<span class="badge badge-after">After-Hours</span>'
         : '<span class="badge badge-weekend">Weekend</span>';
     const payHtml = isPaid
-      ? `<span class="pay-badge-paid">✓ Paid</span>${e.quarter_paid ? '<br><span style="font-size:9px;color:var(--green2);font-family:monospace;">'+e.quarter_paid+'</span>' : ''}`
+      ? `<span class="pay-badge-paid">Paid</span>${e.quarter_paid ? '<br><span style="font-size:9px;color:var(--green2);font-family:monospace;">'+e.quarter_paid+'</span>' : ''}`
       : e.payment_status === 'Reported'
-        ? '<span class="pay-badge-reported">📤 Reported</span>'
+        ? '<span class="pay-badge-reported">Reported</span>'
         : '<span class="pay-badge-unpaid">Unpaid</span>';
     const rowCls = isPaid ? 'paid-row' : '';
     const lockIcon = isPaid ? '🔒' : '';
@@ -1427,10 +1427,10 @@ function renderBillingTable() {
   tbody.innerHTML = sorted.map((e,i) => {
     const isPaid = e.payment_status === 'Paid';
     const payHtml = isPaid
-      ? `<span class="pay-badge-paid">✓ Paid · ${e.quarter_paid||''}</span>`
+      ? `<span class="pay-badge-paid">Paid${e.quarter_paid ? ' · '+e.quarter_paid : ''}</span>`
       : e.payment_status === 'Reported'
-        ? '<span class="pay-badge-reported">📤 Reported</span>'
-        : '<span class="pay-badge-unpaid">● Unpaid</span>';
+        ? '<span class="pay-badge-reported">Reported</span>'
+        : '<span class="pay-badge-unpaid">Unpaid</span>';
     const typeHtml = e.type === 'Regular'
       ? '<span class="badge badge-regular">Regular</span>'
       : e.type === 'After-Hours'
