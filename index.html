@@ -215,9 +215,21 @@ tfoot td{background:var(--navy);color:rgba(255,255,255,0.85);padding:10px 12px;f
 .status-uat      {background:#ebf8ff;color:#1a6a8e;padding:2px 8px;border-radius:100px;font-size:10px;font-weight:600}
 .status-progress {background:#fffbeb;color:#8a5800;padding:2px 8px;border-radius:100px;font-size:10px;font-weight:600}
 .status-pending  {background:var(--gray100);color:var(--gray600);padding:2px 8px;border-radius:100px;font-size:10px;font-weight:600}
-.pay-badge-paid    {background:#f0fff4;color:#276749;border:1px solid #9ae6b4;padding:2px 8px;border-radius:100px;font-size:10px;font-weight:600}
-.pay-badge-unpaid  {background:#fffbeb;color:#8a5800;border:1px solid #fbd38d;padding:2px 8px;border-radius:100px;font-size:10px;font-weight:600}
-.pay-badge-reported{background:#ebf8ff;color:#1a4480;border:1px solid #90cdf4;padding:2px 8px;border-radius:100px;font-size:10px;font-weight:600}
+.pay-badge-paid,
+.pay-badge-unpaid,
+.pay-badge-reported{
+  display:inline-block;
+  padding:3px 10px;
+  border-radius:100px;
+  font-size:10px;
+  font-weight:600;
+  line-height:1.4;
+  white-space:nowrap;
+  letter-spacing:0.2px;
+}
+.pay-badge-paid    {background:#f0fff4;color:#276749;border:1px solid #9ae6b4}
+.pay-badge-unpaid  {background:#fffbeb;color:#8a5800;border:1px solid #fbd38d}
+.pay-badge-reported{background:#ebf8ff;color:#1a4480;border:1px solid #90cdf4}
 
 /* ── Form ── */
 .form-card{background:var(--white);border-radius:var(--radius-lg);padding:20px 22px;box-shadow:var(--shadow);border:1px solid var(--gray200);margin-bottom:20px}
@@ -1821,23 +1833,36 @@ async function generatePDF() {
   // ── Mark included Unpaid entries as Pending Collection ──
   if (onlyNew) {
     const toMark = periodEntries.filter(e => e.payment_status === 'Unpaid');
-    if (toMark.length) {
-      const ids = toMark.map(e => e.id).join(',');
-      try {
-        await sbPatch('sla_entries', `id=in.(${ids})`, { payment_status: 'Pending Collection' });
-        toMark.forEach(e => {
+    console.log('[PDF] onlyNew=true. periodEntries=', periodEntries.length, 'toMark=', toMark.length, toMark.map(e=>e.id));
+    if (!toMark.length) {
+      toast('ℹ️ PDF exported. No new entries needed re-marking.');
+    } else {
+      let ok = 0, failed = [];
+      for (const e of toMark) {
+        try {
+          const res = await sbPatch('sla_entries', `id=eq.${e.id}`, { payment_status: 'Pending Collection' });
+          console.log('[PDF] patched id', e.id, '→', res);
           const idx = STATE.entries.findIndex(x => x.id == e.id);
           if (idx >= 0) STATE.entries[idx].payment_status = 'Pending Collection';
-        });
-        renderLog();
-        renderDashboard();
-        renderBilling();
-        toast(`${toMark.length} ${toMark.length===1?'entry':'entries'} moved to Pending Collection.`);
-        addSecLog('📋', `Marked ${toMark.length} entries as Pending Collection (${from} → ${to})`);
-      } catch (err) {
-        toast('⚠️ PDF saved but could not update entries: ' + err.message);
+          ok++;
+        } catch (err) {
+          console.error('[PDF] patch failed for id', e.id, err);
+          failed.push({ id: e.id, msg: err.message });
+        }
+      }
+      renderLog();
+      renderDashboard();
+      renderBilling();
+      if (failed.length === 0) {
+        toast(`✅ ${ok} ${ok===1?'entry':'entries'} moved to Pending Collection.`);
+        addSecLog('📋', `Marked ${ok} entries as Pending Collection (${from} → ${to})`);
+      } else {
+        toast(`⚠️ ${ok} updated, ${failed.length} failed. See console.`);
+        console.error('[PDF] failed entries:', failed);
       }
     }
+  } else {
+    console.log('[PDF] onlyNew=false — skipping mark step.');
   }
 }
 
